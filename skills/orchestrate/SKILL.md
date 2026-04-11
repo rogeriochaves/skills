@@ -15,9 +15,11 @@ Once you have something mostly done all tests passing all typechecks, you can op
 
 Then when you think you are done with the implementation, stop, you are NOT done until you’ve done QA ad-nauseum, it doesn’t matter how much green the tests are, you need to dogfood your work as a real user would, if you haven’t used it yourself, it’s the same as nothing.
 
-So if the work at hand is something that can be accessed through the frontend at all, use computer use + Claude in chrome to really access the screen, navigate, see if everything works, evaluate the UX experience, the UI, look for edge cases and so on, if not, if it’s the CLI or so, still use it like a real user, build example applications to test it, use it for real from every way and angle, perfect the experience,m, do not worry about making the PR big
+So if the work at hand is something that can be accessed through the frontend at all, you MUST drive a real browser to verify it. **Load the `/browser-qa` skill before you start the QA phase** — it has the playbook for which browser stack to use (Playwright MCP vs Claude-in-Chrome + computer-use), the failure modes to avoid, and the up-front permission requests to make so you don't get blocked mid-task waiting for user approval. Do not improvise browser automation if `/browser-qa` exists; load it and follow it.
 
-Do not save any screenshots to the repo except if for docs, put on a .claude or temp folder instead, and use the service https://img402.dev/ (`curl -F image=@screenshot.png https://img402.dev/api/free`) to upload it for the pull request
+If the work isn't frontend (CLI, SDK, agent), still use it like a real user — build example applications to test it, use it for real from every way and angle, perfect the experience. Do not worry about making the PR big.
+
+Do not save any screenshots to the repo except if for docs, put on a .claude or temp folder instead, and use the service https://img402.dev/ (`curl -F image=@screenshot.png https://img402.dev/api/free`) to upload it for the pull request (the `/browser-qa` skill covers this in more detail).
 
 Only really say done after you have QAed, took screenshots, babysitted the PR for CI and coderabbit comments, added user docs for all of it as needed, then even so think again what haven’t you QAed, and open the screen and QA again, until really done, proved and proved again
 
