@@ -19,8 +19,18 @@ So if the work at hand is something that can be accessed through the frontend at
 
 If the work isn't frontend (CLI, SDK, agent), still use it like a real user — build example applications to test it, use it for real from every way and angle, perfect the experience. Do not worry about making the PR big.
 
-Do not save any screenshots to the repo except if for docs, put on a .claude or temp folder instead, and use the service https://img402.dev/ (`curl -F image=@screenshot.png https://img402.dev/api/free`) to upload it for the pull request (the `/browser-qa` skill covers this in more detail).
+Do not save screenshots to the working repo (except for docs). Put them in a `.claude/` or temp folder, then publish via the **`langwatch/pr-screenshots`** repo, cloned locally at **`~/Projects/pr-screenshots`**:
 
-Only really say done after you have QAed, took screenshots, babysitted the PR for CI and coderabbit comments, added user docs for all of it as needed, then even so think again what haven’t you QAed, and open the screen and QA again, until really done, proved and proved again
+```bash
+cd ~/Projects/pr-screenshots && git pull --rebase
+cp /tmp/shot.png pr-<PR#>/<section>/<name>.png
+git add . && git commit -m "pr-<PR#>: <what>" && git push origin main
+```
+
+Embed in the PR body as `https://raw.githubusercontent.com/langwatch/pr-screenshots/main/pr-<PR#>/<section>/<name>.png`. The `/browser-qa` skill covers the capture step in more detail.
+
+**Screenshots are mandatory.** Before reporting a PR as ready, you MUST have screenshots pushed to `langwatch/pr-screenshots` and embedded in the PR description. A PR without screenshots is not QA’d — period. Take screenshots during QA (not after), push them immediately, and update the PR body before moving on. This is not optional.
+
+Only really say done after you have QAed, took screenshots embedded in the PR, babysitted the PR for CI and coderabbit comments, added user docs for all of it as needed, then even so think again what haven’t you QAed, and open the screen and QA again, until really done, proved and proved again
 
 If what you are doing is some kinda of small internal task and what I’m saying about QAing doesn’t make sense, still think how would the principle adapt to your context, really proving the delivery in a great shape.

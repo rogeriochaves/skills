@@ -64,15 +64,19 @@ Tool-call counts are identical on the happy path (8–9 calls). The difference i
 6. **Verify the feature, then verify the unhappy paths.** "Happy path works" *and* "the obvious error case shows a clear message" *and* "form validation rejects bad input". The bug is almost always in the path you didn't QA.
 7. **Don't claim the feature works until you saw it work in a browser screenshot.** Tests passing is necessary, not sufficient.
 
-## Screenshot handling
+## Screenshot handling — MANDATORY
 
-- **Never commit screenshots to the repo** unless they're explicitly user-facing docs assets. Put them in `.claude/`, `bench/`, or another gitignored location.
-- **Upload to `https://img402.dev/`** for PR comments and bug reports:
+**Screenshots are not optional.** Every QA session must produce screenshots uploaded to the PR. A PR reported as "ready" without embedded screenshots is incomplete — go back and take them. Do this DURING QA, not as an afterthought.
+
+- **Never commit screenshots to the working repo** unless they're explicitly user-facing docs assets. Put them in `.claude/`, `bench/`, or another gitignored location.
+- **Publish via `langwatch/pr-screenshots`** (cloned at `~/Projects/pr-screenshots`):
   ```bash
-  curl -F image=@screenshot.png https://img402.dev/api/free
+  cd ~/Projects/pr-screenshots && git pull --rebase
+  cp /path/to/shot.png pr-<PR#>/<section>/<name>.png
+  git add . && git commit -m "pr-<PR#>: <what>" && git push origin main
   ```
-  Returns a URL you can drop into a PR body / Slack message.
-- **Embed the URLs in the PR description**, not as committed files.
+  The raw URL is `https://raw.githubusercontent.com/langwatch/pr-screenshots/main/pr-<PR#>/<section>/<name>.png`.
+- **Embed the raw URLs in the PR description** before reporting the PR as ready. Not as committed files, not as a comment — in the PR body itself.
 
 ## Ending the QA phase
 
@@ -81,7 +85,9 @@ You are done with browser QA when you can answer all of these "yes":
 - I navigated through the feature like a user would, not just to the screen that proves my code path runs.
 - I tried the unhappy paths (missing config, bad input, network failure simulation if relevant).
 - I have screenshots of the happy path *and* the most important edge case.
-- The screenshots are uploaded and linked from the PR.
+- **The screenshots are pushed to `langwatch/pr-screenshots` and embedded in the PR body** (not just taken locally — actually in the PR description right now).
 - I noticed at least one rough UX edge during QA and either fixed it or filed it.
 
 If you can't say yes to all of those, you haven't QA'd yet — you've smoke-tested. Go back and use the feature.
+
+**HARD GATE:** Do not report "all CI green, PR ready" without screenshots in the PR. Screenshots first, then status report.
