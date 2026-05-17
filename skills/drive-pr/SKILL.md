@@ -3,7 +3,7 @@ name: drive-pr
 description: Drive a PR to mergeable state — check CodeRabbit and reviewer comments, address valid ones, reply and resolve invalid ones, fix CI failures (even pre-existing ones from main), push fixes, then loop every 4.5 minutes until two consecutive clean checks. Use after opening a PR when you want it babysitted to green.
 ---
 
-Can you now check the PR for coderabbit or other comments, check if they are valid and address them, if valid then do the fix and push, if not then reply to the comment and mark it as resolved
+Can you now check the PR for coderabbit or other comments, check if they are valid and address them, if valid then do the fix and push, if not then reply to the comment and mark it as resolved. Just to be clear, check for ALL comments on the PR, bots or user, and _address_ them, meaning either fixing if valid or commenting and marking the comment as resolved it not really.
 
 Also check the CI jobs, fix any failures, if failures are like unit, lint, typecheck or even integration, try running it locally to make sure its fixed first before pushing and waiting again on the CI
 
