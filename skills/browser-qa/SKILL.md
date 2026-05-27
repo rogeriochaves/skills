@@ -16,7 +16,7 @@ You will be blocked mid-task if you wait until you need a permission to ask for 
 
 If anything is missing, surface it immediately — don't start QA half-blind.
 
-> **Why only Playwright?** Earlier versions of this skill juggled three stacks (Playwright MCP, Claude-in-Chrome, computer-use). After dozens of QA sessions on real PRs, Claude-in-Chrome consistently lost — background-tab throttling stalls polling loops, the content filter redacts page text, and a single CDP timeout costs 45 s with no recovery path from a prompt. Playwright headless screenshots are dense and clinical, which is exactly what a reviewer wants. Stick to one stack and learn its sharp edges. (Computer-use is still the right tool for *native* desktop apps — outside the scope of browser QA.)
+> **Why Playwright?** It's fast, scriptable, and snapshot-aware, and its failures surface at the prompt layer so you can recover with smarter retries instead of restarting the runtime. Headless screenshots are dense and clinical, which is exactly what a reviewer wants. Stick to one stack and learn its sharp edges.
 
 ## Playwright MCP failure modes — all fixable from your side
 

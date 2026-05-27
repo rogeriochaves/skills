@@ -32,8 +32,8 @@ npx skills add rogeriochaves/skills --list
 
 | Skill | Description |
 | --- | --- |
-| [`orchestrate`](skills/orchestrate/SKILL.md) | Disciplined delivery loop: BDD specs → real integration tests (no mocks) → PR + CI/CodeRabbit babysitting → mandatory end-user QA via computer-use or CLI dogfooding before anything is called done. |
-| [`browser-qa`](skills/browser-qa/SKILL.md) | Drive a real browser to QA a feature end-to-end. Picks the right stack (Playwright MCP / Claude-in-Chrome / computer-use), covers failure modes, captures PR screenshots. The QA stage of `orchestrate`. |
+| [`orchestrate`](skills/orchestrate/SKILL.md) | Disciplined delivery loop: BDD specs → real integration tests (no mocks) → PR + CI/CodeRabbit babysitting → mandatory end-user QA via a real browser (Playwright) or CLI dogfooding before anything is called done. |
+| [`browser-qa`](skills/browser-qa/SKILL.md) | Drive a real browser to QA a feature end-to-end. Drives Playwright, covers failure modes, captures PR screenshots. The QA stage of `orchestrate`. |
 | [`drive-pr`](skills/drive-pr/SKILL.md) | Babysit a PR to mergeable state — address CodeRabbit/reviewer comments, fix CI failures (even pre-existing ones), push fixes, then loop every 4.5 min until two consecutive clean checks. |
 
 ## Contributing (and live-editing locally)

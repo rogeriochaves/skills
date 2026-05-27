@@ -1,6 +1,6 @@
 ---
 name: orchestrate
-description: Loads orchestrate mode — a disciplined delivery loop that enforces BDD specs in specs/, real integration tests (no mocks), PR CI and CodeRabbit babysitting, and mandatory end-user QA via computer-use or CLI dogfooding before anything is considered done. Use when starting any non-trivial implementation task, feature build, or delivery where you want the work driven from spec to proven-shipped state rather than stopping at "tests pass".
+description: Loads orchestrate mode — a disciplined delivery loop that enforces BDD specs in specs/, real integration tests (no mocks), PR CI and CodeRabbit babysitting, and mandatory end-user QA via a real browser (Playwright) or CLI dogfooding before anything is considered done. Use when starting any non-trivial implementation task, feature build, or delivery where you want the work driven from spec to proven-shipped state rather than stopping at "tests pass".
 ---
 
 This skill loads orchestrate mode to guide you on the loop you are in
@@ -15,7 +15,7 @@ Once you have something mostly done all tests passing all typechecks, you can op
 
 Then when you think you are done with the implementation, stop, you are NOT done until you’ve done QA ad-nauseum, it doesn’t matter how much green the tests are, you need to dogfood your work as a real user would, if you haven’t used it yourself, it’s the same as nothing.
 
-So if the work at hand is something that can be accessed through the frontend at all, you MUST drive a real browser to verify it. **Load the `/browser-qa` skill before you start the QA phase** — it has the playbook for which browser stack to use (Playwright MCP vs Claude-in-Chrome + computer-use), the failure modes to avoid, and the up-front permission requests to make so you don't get blocked mid-task waiting for user approval. Do not improvise browser automation if `/browser-qa` exists; load it and follow it.
+So if the work at hand is something that can be accessed through the frontend at all, you MUST drive a real browser to verify it. **Load the `/browser-qa` skill before you start the QA phase** — it has the Playwright playbook, the failure modes to avoid, and the up-front permission requests to make so you don't get blocked mid-task waiting for user approval. Do not improvise browser automation if `/browser-qa` exists; load it and follow it.
 
 If the work isn't frontend (CLI, SDK, agent), still use it like a real user — build example applications to test it, use it for real from every way and angle, perfect the experience. Do not worry about making the PR big.
 
