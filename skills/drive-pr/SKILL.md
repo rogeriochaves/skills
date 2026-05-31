@@ -5,6 +5,11 @@ description: Drive a PR to mergeable state — check CodeRabbit and reviewer com
 
 Can you now check the PR for coderabbit or other comments, check if they are valid and address them, if valid then do the fix and push, if not then reply to the comment and mark it as resolved. Just to be clear, check for ALL comments on the PR, bots or user, and _address_ them, meaning either fixing if valid or commenting and marking the comment as resolved it not really.
 
+**Three feed sources to check every iteration — they do NOT overlap:**
+1. The **reviews** API (`pulls/<n>/reviews` + `reviews/<id>/comments`): formal reviews with inline line comments. This is where well-behaved reviewer agents post.
+2. The **review-threads** GraphQL (`reviewThreads(first:50){nodes{isResolved}}`): the resolve state of inline comments.
+3. The **issue-comments** API (`issues/<n>/comments`): top-level PR comments. Some agents and bots post their full review here as a single top-level comment instead of using the reviews API — if you only query reviews you'll completely miss them. Always fetch both feeds and merge.
+
 Also check the CI jobs, fix any failures, if failures are like unit, lint, typecheck or even integration, try running it locally to make sure its fixed first before pushing and waiting again on the CI
 
 If a failure is pre-existing on main and not related to our code, it doesn't matter, fix it all the same, unless you're spending too much time trying to fix it and the scope creep would be too large, just fix it, a good boy scout always leaves the place cleaner than they found

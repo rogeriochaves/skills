@@ -43,15 +43,39 @@ If there are valid but conflicting approaches:
 
 ## Posting the review
 
-When the scope is a GitHub PR, post your findings as a single PR comment so the
-review is visible where the work happens:
+When the scope is a GitHub PR, post as a PROPER review — inline comments on
+the lines that have findings, and the top-level body for the summary ONLY.
+
+Why this matters: other tooling (drive-pr loops, other reviewer agents,
+CodeRabbit-style bots) fetches via the GitHub **reviews** API
+(`GET /repos/.../pulls/<n>/reviews` and `/reviews/<id>/comments`). If you
+just call `gh pr comment` you've posted a top-level **issue** comment,
+which the reviews API does NOT return — your findings become invisible
+to anything driving the PR. Inline review comments DO show up in the
+reviews API, so they get picked up.
+
+Use the REST API to post review + inline comments in a single request:
 
 ```bash
-gh pr comment <number-or-url> --body "<your findings, in the Findings Format above>"
+gh api -X POST "repos/<owner>/<repo>/pulls/<number>/reviews" \
+  -f event=COMMENT \
+  -f body="<one-line verdict + short summary, e.g. '2 P0s, 1 P1 — see inline comments'>" \
+  -f 'comments[][path]=path/to/file.ts' \
+  -F 'comments[][line]=42' \
+  -f 'comments[][side]=RIGHT' \
+  -f 'comments[][body]=**P0** — Why it is a problem. Minimal fix direction.'
 ```
 
-Lead with a one-line verdict (e.g. "No blockers" or "2 P0s, 1 P1"), then the
-findings ordered by severity. Keep it to one comment; do not approve or merge.
+Repeat the `comments[][...]` group once per finding. Use the Findings
+Format above for each `body`. For range comments (multi-line),
+add `comments[][start_line]=N` and `comments[][start_side]=RIGHT`.
+
+The top-level `body` is the summary only: one-line verdict + the severity
+counts + a pointer that details are inline. Do NOT paste full findings
+into the body — keep them on the lines they refer to so a reviewer can
+respond to each thread individually.
+
+Do not approve or merge.
 
 ## Working in repos (reuse worktrees)
 
