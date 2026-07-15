@@ -35,6 +35,9 @@ npx skills add rogeriochaves/skills --list
 | [`orchestrate`](skills/orchestrate/SKILL.md) | Disciplined delivery loop: BDD specs → real integration tests (no mocks) → PR + CI/CodeRabbit babysitting → mandatory end-user QA via a real browser (Playwright) or CLI dogfooding before anything is called done. |
 | [`browser-qa`](skills/browser-qa/SKILL.md) | Drive a real browser to QA a feature end-to-end. Drives Playwright, covers failure modes, captures PR screenshots. The QA stage of `orchestrate`. |
 | [`drive-pr`](skills/drive-pr/SKILL.md) | Babysit a PR to mergeable state — address CodeRabbit/reviewer comments, fix CI failures (even pre-existing ones), push fixes, then loop every 4.5 min until two consecutive clean checks. |
+| [`review`](skills/review/SKILL.md) | Review recent code changes for correctness, regressions, test strategy, design quality, and security/privacy risks before merge. Posts findings to the PR. |
+| [`reuse-worktree`](skills/reuse-worktree/SKILL.md) | Reset the current worktree to latest main and create a new branch for fresh work. |
+| [`nexus-room`](skills/nexus-room/SKILL.md) | Operating model of the #nexus room: three persistent Claude forks (strategy, content, execution) syncing via the kanban channel. Chunky summaries after big work, silent acks, grunt work delegated to subagents. Founding prompt preserved verbatim as the recovery seed. |
 
 ## Contributing (and live-editing locally)
 
