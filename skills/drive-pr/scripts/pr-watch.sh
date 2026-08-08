@@ -115,7 +115,8 @@ fetch() {
     --slurpfile rc "$TMP/rc.json" \
     --slurpfile rv "$TMP/rv.json" \
     --arg marker "$IN_PROGRESS_MARKER" '
-    def bodyhash: (.body // "") | "\(length):\(explode | add // 0)";
+    def bodyhash: ((.body // "") | explode) as $e
+      | "\($e | length):\($e | add // 0):\([$e | to_entries[] | (.key + 1) * .value] | add // 0)";
     def snip: (.body // "") | gsub("[\r\n\t]+"; " ") | .[0:240];
     ($meta[0]) as $m |
     {
@@ -229,6 +230,7 @@ case "$ACTION" in
 esac
 
 # --- watch mode ---------------------------------------------------------------
+echo "watching $REPO#$PR mode=$MODE floor=${FLOOR}s poll=${POLL}s state=$STATE_FILE" >&2
 errs=0
 keepwarm_used=0
 last_emit=$(date +%s)

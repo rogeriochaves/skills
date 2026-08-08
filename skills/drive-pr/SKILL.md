@@ -43,6 +43,8 @@ After any push or batch of replies, do not hand-roll a sleep loop and do not re-
       persistent: true, timeout_ms: 3600000
     })
 
+Monitor is often a deferred tool: load it first with ToolSearch ("select:Monitor") or the call fails with InputValidationError. `persistent: true` matters, without it the harness kills the watch at the 1h timeout ceiling.
+
 The cache flag is required and there are exactly two: `--1h-cache` in a main session, `--5min-cache` inside a subagent. It sets the wake floor to the prompt-cache TTL of where you run: main sessions have a 1h TTL, so the floor is 15 min and an idle watch stands down after ~55 min; subagents have a 5m TTL, so the floor is 270s and idle wakes renew the cache at most 3 times (~18 min) before standing down. (The TTL split is measured, 2026-08, and has flipped before; re-measure if cache costs look wrong.)
 
 What the watcher does, so you do not duplicate it: polls REST only (about 8 calls per 90s cycle, GraphQL never), diffs every poll against a per-PR baseline stored under `~/.claude/pr-watch-state/`, and stays silent unless something actionable changed. It wakes you for: a check run, commit status or workflow run newly concluding failure, timed_out, cancelled, action_required or startup_failure; a new comment on any of the three surfaces; an edited comment body (CodeRabbit edits its walkthrough in place, including "Reviews paused"); a merge conflict appearing. It never wakes you for: pending CI, your own comments, empty-body approvals (auto-approve bots), CodeRabbit's "review in progress" placeholder, or anything identical to the last wake.
