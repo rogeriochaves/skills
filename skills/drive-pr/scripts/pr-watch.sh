@@ -160,7 +160,7 @@ fetch() {
     --arg marker "$IN_PROGRESS_MARKER" '
     def bodyhash: ((.body // "") | explode) as $e
       | "\($e | length):\($e | add // 0):\([$e | to_entries[] | (.key + 1) * .value] | add // 0)";
-    def snip: (.body // "") | gsub("[\r\n\t]+"; " ") | .[0:240];
+    def snip: (.body // "") | gsub("[\r\n\t]+"; " ") | gsub("<!--.*?-->"; "") | gsub(" +"; " ") | ltrimstr(" ") | .[0:240];
     ($meta[0]) as $m |
     {
       sha: $m.head.sha,
