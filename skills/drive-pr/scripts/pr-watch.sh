@@ -5,6 +5,11 @@
 # every line printed here wakes the driving agent, so the watch loop prints
 # nothing while there is nothing to act on. Diagnostics go to stderr.
 #
+# Watches ONE OR MANY pull requests in a single process. All watched PRs
+# share one floor and one keepwarm clock, so idle wakes stay at one per
+# boundary no matter how many PRs are covered. Never arm one Monitor per PR
+# in 5min mode: that multiplies keepwarm wakes by the PR count.
+#
 # Wakes the agent only for:
 #   - a check run, commit status or workflow run newly concluding
 #     failure / timed_out / cancelled / action_required / startup_failure
@@ -19,11 +24,14 @@
 # progress" placeholder, or state identical to the stored baseline.
 #
 # Usage:
-#   pr-watch.sh --repo OWNER/REPO --pr N --1h-cache      watch, main session
-#   pr-watch.sh --repo OWNER/REPO --pr N --5min-cache    watch, subagent
-#   pr-watch.sh --repo OWNER/REPO --pr N --seed          capture baseline, exit
-#   pr-watch.sh --repo OWNER/REPO --pr N --status        one diff, no writes
-#   pr-watch.sh --diff-test cur.json base.json           render diff of fixtures
+#   pr-watch.sh --1h-cache OWNER/REPO#N [OWNER/REPO#M ...]     watch, main session
+#   pr-watch.sh --5min-cache OWNER/REPO#N [...]                watch, subagent
+#   pr-watch.sh --seed OWNER/REPO#N [...]                      capture baselines, exit
+#   pr-watch.sh --status OWNER/REPO#N [...]                    one diff per PR, no writes
+#   pr-watch.sh --diff-test cur.json base.json                 render diff of fixtures
+#
+# "#pr-N" is accepted as well as "#N". The legacy single-PR form
+# "--repo OWNER/REPO --pr N" still works.
 #
 # The cache flag is required in watch mode. It sets the wake floor to the
 # prompt-cache TTL of the session type: main sessions have a 1h TTL so the
@@ -42,28 +50,51 @@ set -uo pipefail
 unset TRACEPARENT TRACESTATE 2>/dev/null || true
 
 STATE_DIR="${PRWATCH_STATE_DIR:-$HOME/.claude/pr-watch-state}"
-REPO="" PR="" MODE="" ACTION="watch" ALLOW_CLOSED=0
+MODE="" ACTION="watch" ALLOW_CLOSED=0
 DIFF_CUR="" DIFF_BASE=""
+LEGACY_REPO="" LEGACY_PR=""
+N_PRS=0
+
+add_pr() {
+  R_REPO[$N_PRS]="$1"
+  R_PR[$N_PRS]="$2"
+  R_ERRS[$N_PRS]=0
+  R_ACTIVE[$N_PRS]=1
+  N_PRS=$((N_PRS + 1))
+}
 
 while [ $# -gt 0 ]; do
   case "$1" in
-    --repo) REPO="$2"; shift 2 ;;
-    --pr) PR="$2"; shift 2 ;;
+    --repo) LEGACY_REPO="$2"; shift 2 ;;
+    --pr) LEGACY_PR="$2"; shift 2 ;;
     --1h-cache) MODE="1h"; shift ;;
     --5min-cache) MODE="5m"; shift ;;
     --seed) ACTION="seed"; shift ;;
     --status) ACTION="status"; shift ;;
     --allow-closed) ALLOW_CLOSED=1; shift ;;
     --diff-test) ACTION="diff-test"; DIFF_CUR="$2"; DIFF_BASE="$3"; shift 3 ;;
-    *) echo "unknown argument: $1" >&2; exit 2 ;;
+    */*'#'*)
+      r="${1%%#*}"; n="${1##*#}"; n="${n#pr-}"
+      case "$n" in
+        ''|*[!0-9]*) echo "invalid PR number in: $1" >&2; exit 2 ;;
+      esac
+      add_pr "$r" "$n"
+      shift ;;
+    *) echo "unknown argument: $1 (expected OWNER/REPO#N or a flag)" >&2; exit 2 ;;
   esac
 done
+
+if [ -n "$LEGACY_REPO" ] || [ -n "$LEGACY_PR" ]; then
+  [ -n "$LEGACY_REPO" ] && [ -n "$LEGACY_PR" ] || { echo "--repo and --pr must be passed together" >&2; exit 2; }
+  add_pr "$LEGACY_REPO" "$LEGACY_PR"
+fi
 
 command -v jq >/dev/null 2>&1 || { echo "jq is required" >&2; exit 2; }
 command -v gh >/dev/null 2>&1 || { echo "gh is required" >&2; exit 2; }
 
-if [ "$ACTION" != "diff-test" ]; then
-  [ -n "$REPO" ] && [ -n "$PR" ] || { echo "--repo OWNER/REPO and --pr N are required" >&2; exit 2; }
+if [ "$ACTION" != "diff-test" ] && [ "$N_PRS" -eq 0 ]; then
+  echo "at least one OWNER/REPO#N (or --repo OWNER/REPO --pr N) is required" >&2
+  exit 2
 fi
 if [ "$ACTION" = "watch" ] && [ -z "$MODE" ]; then
   echo "pass --1h-cache (main session) or --5min-cache (subagent): the wake floor depends on it" >&2
@@ -81,13 +112,25 @@ MAX_KEEPWARM="${PRWATCH_MAX_KEEPWARM:-3}"
 ERR_THRESHOLD="${PRWATCH_ERR_THRESHOLD:-5}"
 NO_SELF_FILTER="${PRWATCH_NO_SELF_FILTER:-0}"
 
-STATE_FILE="$STATE_DIR/$(printf '%s' "$REPO" | tr '/' '_')__${PR}.json"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
 IN_PROGRESS_MARKER="auto-generated comment: review in progress"
 
-# --- fetch: one full REST snapshot into $TMP/cur.json. Returns 1 on any hard failure.
+state_file_for() {
+  echo "$STATE_DIR/$(printf '%s' "$1" | tr '/' '_')__$2.json"
+}
+
+active_label() {
+  local out="" i=0
+  while [ $i -lt $N_PRS ]; do
+    [ "${R_ACTIVE[$i]}" = "1" ] && out="$out ${R_REPO[$i]}#${R_PR[$i]}"
+    i=$((i + 1))
+  done
+  printf '%s' "${out# }"
+}
+
+# --- fetch: one full REST snapshot of $REPO#$PR into $TMP/cur.json. Returns 1 on failure.
 fetch() {
   gh api "repos/$REPO/pulls/$PR" >"$TMP/meta.json" 2>>"$TMP/err.log" || return 1
   local sha
@@ -193,7 +236,7 @@ render_burst() {
 
 if [ "$ACTION" = "diff-test" ]; then
   SELF_LOGIN="${PRWATCH_SELF_LOGIN:-nobody}"
-  REPO="${REPO:-test/repo}" PR="${PR:-0}"
+  REPO="test/repo" PR="0"
   compute_diff "$DIFF_CUR" "$DIFF_BASE" >"$TMP/diff.json"
   if diff_has_triggers "$TMP/diff.json"; then render_burst "$TMP/diff.json"; else echo "CLEAN no triggers"; fi
   exit 0
@@ -203,35 +246,48 @@ SELF_LOGIN=$(gh api user --jq .login 2>/dev/null || echo "")
 
 case "$ACTION" in
   seed)
-    fetch || { echo "SEED_FAILED could not fetch $REPO#$PR" >&2; exit 1; }
-    mkdir -p "$STATE_DIR"
-    to_baseline "$TMP/cur.json" >"$STATE_FILE"
-    jq -r --arg repo "$REPO" --arg pr "$PR" \
-      '"SEEDED \($repo)#\($pr) sha=\(.sha[0:9]) failures=\(.failures | length) comments=\(.comments | length) dirty=\(.dirty)"' \
-      "$STATE_FILE"
-    exit 0
+    rc=0
+    i=0
+    while [ $i -lt $N_PRS ]; do
+      REPO="${R_REPO[$i]}"; PR="${R_PR[$i]}"; STATE_FILE=$(state_file_for "$REPO" "$PR")
+      if fetch; then
+        mkdir -p "$STATE_DIR"
+        to_baseline "$TMP/cur.json" >"$STATE_FILE"
+        jq -r --arg repo "$REPO" --arg pr "$PR" \
+          '"SEEDED \($repo)#\($pr) sha=\(.sha[0:9]) failures=\(.failures | length) comments=\(.comments | length) dirty=\(.dirty)"' \
+          "$STATE_FILE"
+      else
+        echo "SEED_FAILED could not fetch $REPO#$PR" >&2
+        rc=1
+      fi
+      i=$((i + 1))
+    done
+    exit $rc
     ;;
   status)
-    fetch || { echo "STATUS_FAILED could not fetch $REPO#$PR" >&2; exit 1; }
-    if [ "$ALLOW_CLOSED" != "1" ] && ! jq -e '.open' "$TMP/cur.json" >/dev/null; then
-      echo "TERMINAL $REPO#$PR is merged or closed; nothing to watch"
-      exit 0
-    fi
-    if [ ! -f "$STATE_FILE" ]; then
-      echo "NO_BASELINE run --seed first (or start the watch, which seeds itself)"
-      exit 0
-    fi
-    compute_diff "$TMP/cur.json" "$STATE_FILE" >"$TMP/diff.json"
-    if diff_has_triggers "$TMP/diff.json"; then render_burst "$TMP/diff.json"; else
-      jq -r '"CLEAN nothing new (\(.pending) pending)"' "$TMP/diff.json"
-    fi
+    i=0
+    while [ $i -lt $N_PRS ]; do
+      REPO="${R_REPO[$i]}"; PR="${R_PR[$i]}"; STATE_FILE=$(state_file_for "$REPO" "$PR")
+      if ! fetch; then
+        echo "STATUS_FAILED could not fetch $REPO#$PR" >&2
+      elif [ "$ALLOW_CLOSED" != "1" ] && ! jq -e '.open' "$TMP/cur.json" >/dev/null; then
+        echo "TERMINAL $REPO#$PR is merged or closed; nothing to watch"
+      elif [ ! -f "$STATE_FILE" ]; then
+        echo "NO_BASELINE $REPO#$PR: run --seed first (or start the watch, which seeds itself)"
+      else
+        compute_diff "$TMP/cur.json" "$STATE_FILE" >"$TMP/diff.json"
+        if diff_has_triggers "$TMP/diff.json"; then render_burst "$TMP/diff.json"; else
+          jq -r --arg rp "$REPO#$PR" '"CLEAN \($rp) nothing new (\(.pending) pending)"' "$TMP/diff.json"
+        fi
+      fi
+      i=$((i + 1))
+    done
     exit 0
     ;;
 esac
 
 # --- watch mode ---------------------------------------------------------------
-echo "watching $REPO#$PR mode=$MODE floor=${FLOOR}s poll=${POLL}s state=$STATE_FILE" >&2
-errs=0
+echo "watching $(active_label) mode=$MODE floor=${FLOOR}s poll=${POLL}s state_dir=$STATE_DIR" >&2
 keepwarm_used=0
 last_emit=$(date +%s)
 cycle=0
@@ -248,62 +304,83 @@ while :; do
     fi
   fi
 
-  if ! fetch; then
-    errs=$((errs + 1))
-    echo "fetch failed ($errs/$ERR_THRESHOLD): $(tail -1 "$TMP/err.log" 2>/dev/null)" >&2
-    if [ "$errs" -ge "$ERR_THRESHOLD" ]; then
-      echo "WAKE_ERROR gh failed $errs consecutive polls on $REPO#$PR; check gh auth status and gh api rate_limit, then re-arm"
-      exit 1
-    fi
-    sleep "$POLL"
-    continue
-  fi
-  errs=0
-
-  if [ "$ALLOW_CLOSED" != "1" ] && ! jq -e '.open' "$TMP/cur.json" >/dev/null; then
-    echo "TERMINAL $REPO#$PR is merged or closed; watcher exiting"
-    exit 0
-  fi
-
-  if [ ! -f "$STATE_FILE" ]; then
-    mkdir -p "$STATE_DIR"
-    to_baseline "$TMP/cur.json" >"$STATE_FILE"
-    jq -r '"seeded baseline: failures=\(.failures | length) comments=\(.comments | length) sha=\(.sha[0:9])"' \
-      "$STATE_FILE" >&2
-    sleep "$POLL"
-    continue
-  fi
-
-  compute_diff "$TMP/cur.json" "$STATE_FILE" >"$TMP/diff.json"
   now=$(date +%s)
   gap=$((now - last_emit))
+  can_emit=0
+  [ "$gap" -ge "$FLOOR" ] && can_emit=1
+  emitted=0
+  held=0
+  actives=0
 
-  if diff_has_triggers "$TMP/diff.json"; then
-    if [ "$gap" -ge "$FLOOR" ]; then
-      render_burst "$TMP/diff.json"
-      to_baseline "$TMP/cur.json" >"$STATE_FILE"
-      last_emit=$now
-      keepwarm_used=0
+  i=0
+  while [ $i -lt $N_PRS ]; do
+    if [ "${R_ACTIVE[$i]}" != "1" ]; then i=$((i + 1)); continue; fi
+    actives=$((actives + 1))
+    REPO="${R_REPO[$i]}"; PR="${R_PR[$i]}"; STATE_FILE=$(state_file_for "$REPO" "$PR")
+
+    if ! fetch; then
+      R_ERRS[$i]=$((${R_ERRS[$i]} + 1))
+      echo "fetch failed for $REPO#$PR (${R_ERRS[$i]}/$ERR_THRESHOLD): $(tail -1 "$TMP/err.log" 2>/dev/null)" >&2
+      if [ "${R_ERRS[$i]}" -ge "$ERR_THRESHOLD" ]; then
+        echo "WAKE_ERROR gh failed ${R_ERRS[$i]} consecutive polls on $REPO#$PR; dropping it from the watch. Check gh auth status and gh api rate_limit, then re-arm for it"
+        R_ACTIVE[$i]=0; actives=$((actives - 1)); emitted=1
+      fi
+      i=$((i + 1)); continue
     fi
-    # below the floor: hold, changes accumulate into one burst
-  else
-    if [ "$gap" -ge "$FLOOR" ]; then
-      if [ "$MODE" = "5m" ]; then
-        if [ "$keepwarm_used" -lt "$MAX_KEEPWARM" ]; then
-          keepwarm_used=$((keepwarm_used + 1))
-          echo "KEEPWARM $keepwarm_used/$MAX_KEEPWARM nothing new on $REPO#$PR; this wake only renews your 5m cache, reply one short line and stop"
-          last_emit=$now
-        else
-          echo "STANDDOWN $REPO#$PR idle through $MAX_KEEPWARM cache renewals (~$(( (MAX_KEEPWARM + 1) * FLOOR / 60 ))min); watcher exiting, do not re-arm, the user picks this up later"
-          exit 0
-        fi
+    R_ERRS[$i]=0
+
+    if [ "$ALLOW_CLOSED" != "1" ] && ! jq -e '.open' "$TMP/cur.json" >/dev/null; then
+      echo "TERMINAL $REPO#$PR is merged or closed; dropping it from the watch"
+      R_ACTIVE[$i]=0; actives=$((actives - 1)); emitted=1
+      i=$((i + 1)); continue
+    fi
+
+    if [ ! -f "$STATE_FILE" ]; then
+      mkdir -p "$STATE_DIR"
+      to_baseline "$TMP/cur.json" >"$STATE_FILE"
+      jq -r --arg rp "$REPO#$PR" \
+        '"seeded baseline for \($rp): failures=\(.failures | length) comments=\(.comments | length) sha=\(.sha[0:9])"' \
+        "$STATE_FILE" >&2
+      i=$((i + 1)); continue
+    fi
+
+    compute_diff "$TMP/cur.json" "$STATE_FILE" >"$TMP/diff.json"
+    if diff_has_triggers "$TMP/diff.json"; then
+      if [ "$can_emit" = "1" ]; then
+        render_burst "$TMP/diff.json"
+        to_baseline "$TMP/cur.json" >"$STATE_FILE"
+        emitted=1
       else
-        if [ "$gap" -ge "$IDLE_LIMIT" ]; then
-          echo "STANDDOWN $REPO#$PR idle for $((gap / 60))min; watcher exiting, do not re-arm, the user picks this up later"
-          exit 0
-        fi
+        held=1
       fi
     fi
+    i=$((i + 1))
+  done
+
+  if [ "$emitted" = "1" ]; then
+    last_emit=$now
+    keepwarm_used=0
+  elif [ "$can_emit" = "1" ] && [ "$held" = "0" ] && [ "$actives" -gt 0 ]; then
+    if [ "$MODE" = "5m" ]; then
+      if [ "$keepwarm_used" -lt "$MAX_KEEPWARM" ]; then
+        keepwarm_used=$((keepwarm_used + 1))
+        echo "KEEPWARM $keepwarm_used/$MAX_KEEPWARM nothing new on $(active_label); this wake only renews your 5m cache, reply one short line and stop"
+        last_emit=$now
+      else
+        echo "STANDDOWN $(active_label) idle through $MAX_KEEPWARM cache renewals (~$(((MAX_KEEPWARM + 1) * FLOOR / 60))min); watcher exiting, do not re-arm, the user picks this up later"
+        exit 0
+      fi
+    else
+      if [ "$gap" -ge "$IDLE_LIMIT" ]; then
+        echo "STANDDOWN $(active_label) idle for $((gap / 60))min; watcher exiting, do not re-arm, the user picks this up later"
+        exit 0
+      fi
+    fi
+  fi
+
+  if [ "$actives" -eq 0 ]; then
+    echo "ALL_DONE nothing left to watch; exiting"
+    exit 0
   fi
 
   sleep "$POLL"

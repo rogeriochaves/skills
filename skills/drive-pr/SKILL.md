@@ -35,19 +35,21 @@ If a failure is pre-existing on main and not related to our code, it doesn't mat
 
 ## Waiting: arm the watcher, do not poll
 
-After any push or batch of replies, do not hand-roll a sleep loop and do not re-check by hand. Arm the watch script under a persistent Monitor once per PR and end your turn; it wakes you only when there is something to act on.
+After any push or batch of replies, do not hand-roll a sleep loop and do not re-check by hand. Arm the watch script under a persistent Monitor once and end your turn; it wakes you only when there is something to act on.
 
     Monitor({
-      command: "bash ~/.claude/skills/drive-pr/scripts/pr-watch.sh --repo OWNER/REPO --pr N --1h-cache",
-      description: "PR N watch: CI + comments",
+      command: "bash ~/.claude/skills/drive-pr/scripts/pr-watch.sh --1h-cache OWNER/REPO#N",
+      description: "PR watch: CI + comments",
       persistent: true, timeout_ms: 3600000
     })
+
+One watcher covers every PR you are driving: pass each as a positional `OWNER/REPO#N` (also accepts `#pr-N`; the legacy `--repo OWNER/REPO --pr N` single form still works). All PRs in one watcher share a single floor and keepwarm clock, so idle wakes stay at one per boundary no matter how many PRs, and every wake line is prefixed with its repo#pr. Never arm one Monitor per PR in 5min mode, that multiplies the keepwarm wakes by the PR count. A merged PR drops out with a TERMINAL line while the rest keep being watched; the watcher exits only when nothing is left.
 
 Monitor is often a deferred tool: load it first with ToolSearch ("select:Monitor") or the call fails with InputValidationError. `persistent: true` matters, without it the harness kills the watch at the 1h timeout ceiling.
 
 The cache flag is required and there are exactly two: `--1h-cache` in a main session, `--5min-cache` inside a subagent. It sets the wake floor to the prompt-cache TTL of where you run: main sessions have a 1h TTL, so the floor is 15 min and an idle watch stands down after ~55 min; subagents have a 5m TTL, so the floor is 270s and idle wakes renew the cache at most 3 times (~18 min) before standing down. (The TTL split is measured, 2026-08, and has flipped before; re-measure if cache costs look wrong.)
 
-What the watcher does, so you do not duplicate it: polls REST only (about 8 calls per 90s cycle, GraphQL never), diffs every poll against a per-PR baseline stored under `~/.claude/pr-watch-state/`, and stays silent unless something actionable changed. It wakes you for: a check run, commit status or workflow run newly concluding failure, timed_out, cancelled, action_required or startup_failure; a new comment on any of the three surfaces; an edited comment body (CodeRabbit edits its walkthrough in place, including "Reviews paused"); a merge conflict appearing. It never wakes you for: pending CI, your own comments, empty-body approvals (auto-approve bots), CodeRabbit's "review in progress" placeholder, or anything identical to the last wake.
+What the watcher does, so you do not duplicate it: polls REST only (about 8 calls per PR per 90s cycle, GraphQL never), diffs every poll against a per-PR baseline stored under `~/.claude/pr-watch-state/`, and stays silent unless something actionable changed. It wakes you for: a check run, commit status or workflow run newly concluding failure, timed_out, cancelled, action_required or startup_failure; a new comment on any of the three surfaces; an edited comment body (CodeRabbit edits its walkthrough in place, including "Reviews paused"); a merge conflict appearing. It never wakes you for: pending CI, your own comments, empty-body approvals (auto-approve bots), CodeRabbit's "review in progress" placeholder, or anything identical to the last wake.
 
 Wake lines and what each one means:
 
